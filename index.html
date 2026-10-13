@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Classroom Learning Walks - OTR</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero__brand">
+        <img class="hero__logo" src="BPC-logo-WordMarkWHITEcond.png" alt="BPC logo">
+        <div class="hero__content">
+          <h1>Classroom Learning Walks - OTR</h1>
+          <p class="hero__focus">
+            First 15 minutes of class to check on entry classroom routines.
+          </p>
+        </div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="form-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">Observation form</p>
+            <h2>Walkthrough details</h2>
+          </div>
+          <button id="reset-form" class="button button--ghost" type="button">Reset form</button>
+        </div>
+
+        <form id="walk-form" class="walk-form">
+          <section class="card">
+            <div class="field-grid field-grid--meta">
+              <label class="field">
+                <span>Observer</span>
+                <input id="observer" name="observer" type="text" placeholder="Person completing the walk">
+              </label>
+              <label class="field">
+                <span>Date</span>
+                <input id="date" name="date" type="date">
+              </label>
+              <label class="field">
+                <span>Subject</span>
+                <input id="subject" name="subject" type="text" placeholder="Subject area">
+              </label>
+              <label class="field">
+                <span>Lesson segment</span>
+                <select id="lesson-segment" name="lessonSegment">
+                  <option value="Beginning">Beginning</option>
+                  <option value="Middle">Middle</option>
+                  <option value="End">End</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Class</span>
+                <input id="class-name" name="className" type="text" placeholder="Class or year level">
+              </label>
+              <label class="field">
+                <span>Classroom</span>
+                <input id="classroom" name="classroom" type="text" placeholder="Room or space">
+              </label>
+            </div>
+          </section>
+
+          <section class="card" id="practice-sections"></section>
+
+          <section class="card card--notes">
+            <div class="section-title">
+              <div>
+                <p class="section-kicker">Reflection</p>
+                <h3>Walkthrough notes</h3>
+              </div>
+            </div>
+            <label class="field field--stacked">
+              <span>Overall observation notes</span>
+              <textarea
+                id="overall-notes"
+                name="overallNotes"
+                rows="5"
+                placeholder="Capture patterns, strengths, and follow-up actions"
+              ></textarea>
+            </label>
+          </section>
+
+          <section class="card card--notes">
+            <div class="section-title">
+              <div>
+                <p class="section-kicker">CSV delivery</p>
+                <h3>Email the export</h3>
+              </div>
+            </div>
+            <label class="field field--stacked">
+              <span>Send exported CSV to</span>
+              <input
+                id="export-email"
+                name="exportEmail"
+                type="email"
+                placeholder="name@example.com"
+                autocomplete="email"
+              >
+            </label>
+            <p id="export-status" class="export-status" aria-live="polite">
+              Export each walkthrough when it is finished. The form does not store walkthroughs on this device.
+            </p>
+          </section>
+
+          <div class="actions">
+            <button class="button" id="export-history" type="submit">Export walkthrough CSV</button>
+            <a class="button button--ghost" href="analysis.html">Analyse CSV files</a>
+          </div>
+        </form>
+      </section>
+
+      <aside class="summary-panel">
+        <section class="card card--timing">
+          <div class="section-title">
+            <div>
+              <p class="section-kicker">Instruction Timing</p>
+              <h3>Teaching mode tracker</h3>
+            </div>
+          </div>
+
+          <div class="mode-definitions" aria-label="Teaching mode definitions">
+            <p><strong>Direct Instruction</strong> - Teacher is instructing the whole class.</p>
+            <p><strong>Co-Construction</strong> - Teacher is facilitating individual and whole-class opportunities to engage in instruction and respond.</p>
+            <p><strong>Independent Work</strong> - Students are working on assigned tasks without teacher involvement.</p>
+            <p><strong>Independent Work / Group Work / Teacher Collaboration</strong> - Students are working independently or in groups while the teacher monitors, conferences, and assists.</p>
+          </div>
+
+          <div class="timing-actions">
+            <button id="observationToggle" class="button button--ghost button--timing button--observation" type="button">Start Observation</button>
+            <button id="directInstructionToggle" class="button button--ghost button--timing button--direct" type="button">Start Direct Instruction</button>
+            <button id="collaborativeInstructionToggle" class="button button--ghost button--timing button--collaborative" type="button">Start Co-Construction</button>
+            <button id="independentWorkToggle" class="button button--ghost button--timing button--independent" type="button">Start Independent Work</button>
+            <button id="collaborationToggle" class="button button--ghost button--timing button--collaboration" type="button">Start Independent Work / Group Work / Teacher Collaboration</button>
+          </div>
+
+          <div class="timing-metrics">
+            <article class="timing-card timing-card--highlight">
+              <p>Observation Time</p>
+              <strong id="observationTime">00:00:00</strong>
+            </article>
+            <article class="timing-card">
+              <p>Direct Instruction</p>
+              <strong id="directInstructionTime">00:00:00</strong>
+              <span id="directInstructionShare" class="metric-detail">0%</span>
+            </article>
+            <article class="timing-card">
+              <p>Co-Construction</p>
+              <strong id="collaborativeInstructionTime">00:00:00</strong>
+              <span id="collaborativeInstructionShare" class="metric-detail">0%</span>
+            </article>
+            <article class="timing-card">
+              <p>Independent Work</p>
+              <strong id="independentWorkTime">00:00:00</strong>
+              <span id="independentWorkShare" class="metric-detail">0%</span>
+            </article>
+            <article class="timing-card">
+              <p>Independent Work / Group Work / Teacher Collaboration</p>
+              <strong id="collaborationTime">00:00:00</strong>
+              <span id="collaborationShare" class="metric-detail">0%</span>
+            </article>
+          </div>
+
+          <div class="timing-progress-track" aria-hidden="true">
+            <span id="instructionProgress" class="timing-progress timing-progress--direct"></span>
+            <span id="collaborativeInstructionProgress" class="timing-progress timing-progress--collaborative"></span>
+            <span id="independentProgress" class="timing-progress timing-progress--independent"></span>
+            <span id="collaborationProgress" class="timing-progress timing-progress--collaboration"></span>
+          </div>
+
+          <div class="timing-meta">
+            <p id="instruction-status" class="timing-copy">All teaching modes are currently paused.</p>
+            <p id="segment-count" class="timing-copy">Direct: 0 | Collaborative: 0 | Independent: 0 | Independent / Group / Teacher Collaboration: 0</p>
+          </div>
+        </section>
+
+        <section class="card summary-card">
+          <div class="section-title">
+            <div>
+              <p class="section-kicker">Live summary</p>
+              <h2>Walkthrough snapshot</h2>
+            </div>
+            <span id="completion-badge" class="badge">Ready to track</span>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+          <div id="stats-grid" class="stats-grid"></div>
+          <div id="section-summary" class="section-summary"></div>
+        </section>
+
+      </aside>
+    </main>
+  </div>
+
+  <template id="practice-template">
+    <article class="practice-block">
+      <div class="section-title">
+        <div>
+          <p class="section-kicker section-kicker--small">Observation checklist</p>
+          <h3 class="practice-title"></h3>
+        </div>
+        <span class="badge badge--muted practice-score"></span>
+      </div>
+      <div class="practice-items"></div>
+      <div class="practice-extra"></div>
+      <label class="field field--stacked">
+        <span>Notes related to this section</span>
+        <textarea class="practice-notes" rows="3" placeholder="Add evidence or follow-up notes"></textarea>
+      </label>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
