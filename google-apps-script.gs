@@ -1,4 +1,4 @@
-const SCRIPT_VERSION = "2026-10-14-duplicate-protection";
+const SCRIPT_VERSION = "2026-10-14-timestamp-filenames";
 const DRIVE_FOLDER_ID = "1YThYqaqnVbZbjAODNoH35mGtoLw6fFLG";
 const SENDER_NAME = "Classroom Learning Walks";
 const EMAIL_SUBJECT_PREFIX = "Classroom Learning Walks CSV Export";
@@ -41,28 +41,35 @@ function doPost(e) {
     }
     const exportKey = hashText_(recipientEmail + "\n" + observationId);
     const folder = DRIVE_FOLDER_ID ? DriveApp.getFolderById(DRIVE_FOLDER_ID) : DriveApp.getRootFolder();
-    const finalFilename = "classroom-learning-walks-" + exportKey + ".csv";
+    const recoveryFilename = "classroom-learning-walks-" + exportKey + ".csv";
     const properties = PropertiesService.getUserProperties();
     const recent = JSON.parse(properties.getProperty("recentWalkExports") || "[]");
     const previous = recent.find((entry) => entry.key === exportKey);
-    const matches = previous ? null : folder.getFilesByName(finalFilename);
-    const existingFile = previous ? DriveApp.getFileById(previous.id) : matches.hasNext() ? matches.next() : null;
+    const matches = previous ? null : folder.getFilesByName(recoveryFilename);
+    let existingFile = previous ? DriveApp.getFileById(previous.id) : matches.hasNext() ? matches.next() : null;
+    if (!existingFile) {
+      const taggedFiles = folder.searchFiles("trashed = false and fullText contains '" + exportKey + "'");
+      if (taggedFiles.hasNext()) existingFile = taggedFiles.next();
+    }
 
     if (existingFile) {
       if (existingFile.getBlob().getDataAsString("UTF-8") !== csvContent) {
         return buildHtmlResponse_({ ok: false, driveUrl: existingFile.getUrl(), error: "This observation was already uploaded with different contents. Your changes have not overwritten the original, and no extra file or email was created. Keep your updated downloaded CSV and contact the report administrator to replace the original if needed." });
       }
-      const emailed = existingFile.getDescription() === "Learning Walk export: email sent";
-      return buildHtmlResponse_({ ok: true, emailUnconfirmed: !emailed, recipientEmail, recordCount, finalFilename, driveUrl: existingFile.getUrl(),
+      const emailed = existingFile.getDescription().split("\n")[0] === "Learning Walk export: email sent";
+      return buildHtmlResponse_({ ok: true, emailUnconfirmed: !emailed, recipientEmail, recordCount, finalFilename: existingFile.getName(), driveUrl: existingFile.getUrl(),
         summary: emailed ? "This observation was already saved and emailed. No duplicate file or email was created." : "This observation is already saved in Drive. Email delivery is unconfirmed; no duplicate file or email was created. Use the Drive copy below." });
     }
 
+    const finalFilename = "classroom-learning-walks-indicators-" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd_HH-mm-ss") + ".csv";
     const csvBlob = Utilities.newBlob(csvContent, "text/csv", finalFilename);
-    const driveFile = folder.createFile(csvBlob.copyBlob());
+    // Keep a recoverable name until the durable export key is stored in the description.
+    const driveFile = folder.createFile(Utilities.newBlob(csvContent, "text/csv", recoveryFilename));
     // Remember the file before email delivery; retries must never create a second copy.
     recent.unshift({ key: exportKey, id: driveFile.getId() });
     properties.setProperty("recentWalkExports", JSON.stringify(recent.slice(0, 40)));
-    driveFile.setDescription("Learning Walk export: email delivery unconfirmed");
+    driveFile.setDescription("Learning Walk export: email delivery unconfirmed\nExport key: " + exportKey);
+    driveFile.setName(finalFilename);
 
     let emailSent = false;
     try {
@@ -78,7 +85,7 @@ function doPost(e) {
       name: SENDER_NAME
       });
       emailSent = true;
-      driveFile.setDescription("Learning Walk export: email sent");
+      driveFile.setDescription("Learning Walk export: email sent\nExport key: " + exportKey);
     } catch (emailError) {
       // A send can succeed before an error is returned. Do not automatically resend.
     }
