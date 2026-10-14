@@ -24,7 +24,7 @@ const DEFAULT_LESSON_FOCUS =
 const EXPORT_EMAIL_STORAGE_KEY = "classroom-learning-walks-export-email";
 // Paste the deployed Google Apps Script web app URL here.
 const GOOGLE_APPS_SCRIPT_CONFIG = {
-  webAppUrl: "https://script.google.com/a/macros/buckleyparkco.vic.edu.au/s/AKfycbySfx9JM9C6SQYoOQjKhuD86yNg7o-Vn17kHAVgrLmsi1Vn51p1TBG_nNauMzQOpCVl/exec"
+  webAppUrl: "https://script.google.com/macros/s/AKfycbySfx9JM9C6SQYoOQjKhuD86yNg7o-Vn17kHAVgrLmsi1Vn51p1TBG_nNauMzQOpCVl/exec"
 };
 
 const form = document.querySelector("#walk-form");
@@ -476,11 +476,12 @@ async function exportHistory() {
       recordCount: 1
     });
 
-    flashExportButton("CSV sent", 2200);
-    resetFormState();
+    flashExportButton("Check Google window", 2200);
     setExportStatus(
-      `CSV downloaded and the form has been cleared. Check the Google confirmation window for the final success message and Drive link for ${recipientEmail}.`,
-      "success"
+      `CSV downloaded. Google delivery is unconfirmed here: check the Google window for the success message for ${recipientEmail}. ` +
+      "Your observation remains on this form. After confirming delivery, use Reset form to start the next observation. " +
+      "If Google cannot open the page, try a private browser window signed in only to your Buckley Park College Google account.",
+      ""
     );
   } catch (error) {
     flashExportButton("CSV downloaded", 2200);
@@ -711,28 +712,8 @@ function submitGoogleWorkspaceForm(payload) {
     formElement.appendChild(field);
   });
 
-  return new Promise((resolve, reject) => {
-    let completed = false;
-
-    const finish = () => {
-      if (completed) {
-        return;
-      }
-
-      completed = true;
-      resolve();
-    };
-
-    const timeoutId = window.setTimeout(finish, 2200);
-
-    try {
-      formElement.submit();
-    } catch (error) {
-      window.clearTimeout(timeoutId);
-      completed = true;
-      reject(error);
-    }
-  });
+  // A cross-origin form submission does not confirm whether Google saved the file.
+  formElement.submit();
 }
 
 function setExportStatus(message, tone) {
