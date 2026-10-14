@@ -121,6 +121,10 @@ const TIMING_MODE_CONFIG = [
 ];
 
 let timingState = createDefaultTimingState();
+let observationId;
+let observationSavedAt;
+let downloadedExports = new Set();
+let exportInProgress = false;
 
 renderPracticeSections();
 loadExportEmailPreference();
@@ -215,7 +219,15 @@ function renderPracticeSections() {
 
 async function handleSave(event) {
   event.preventDefault();
-  await exportHistory();
+  if (exportInProgress) return;
+  exportInProgress = true;
+  exportHistoryButton.disabled = true;
+  try {
+    await exportHistory();
+  } finally {
+    exportInProgress = false;
+    exportHistoryButton.disabled = false;
+  }
 }
 
 function collectFormData(now = Date.now()) {
@@ -236,8 +248,8 @@ function collectFormData(now = Date.now()) {
   });
 
   return {
-    id: crypto.randomUUID(),
-    savedAt: new Date().toISOString(),
+    id: observationId,
+    savedAt: observationSavedAt || "",
     observer: formData.get("observer") || "",
     teacher: "",
     date: formData.get("date") || "",
@@ -395,6 +407,9 @@ function persistExportEmailPreference(value) {
 }
 
 function resetFormState() {
+  observationId = crypto.randomUUID();
+  observationSavedAt = null;
+  downloadedExports.clear();
   form.reset();
   document.querySelector("#date").value = new Date().toISOString().slice(0, 10);
   document.querySelector("#lesson-segment").value = "Beginning";
@@ -419,23 +434,27 @@ function resetFormState() {
 
 async function exportHistory() {
   const now = Date.now();
-  const record = collectFormData(now);
-  if (!hasWalkthroughData(record)) {
+  if (!hasWalkthroughData(collectFormData(now))) {
     flashExportButton("Nothing to export", 1600);
     setExportStatus("Complete at least one walkthrough field or timing segment before exporting a CSV.", "error");
     return;
   }
+
+  pauseObservation(now);
+  pauseAllTimingModes(now);
+  observationSavedAt ||= new Date(now).toISOString();
+  const record = collectFormData(now);
+  renderTimingState(now);
 
   const detailRows = buildIndicatorExportRows(record);
   const csvContent = buildCsv(detailRows.length ? detailRows : [buildWalkthroughSummaryRow(record)]);
   const recipientEmail = exportEmailInput.value.trim().toLowerCase();
   const filename = "classroom-learning-walks-indicators.csv";
 
-  downloadFile(
-    csvContent,
-    filename,
-    "text/csv;charset=utf-8;"
-  );
+  if (!downloadedExports.has(csvContent)) {
+    downloadFile(csvContent, filename, "text/csv;charset=utf-8;");
+    downloadedExports.add(csvContent);
+  }
 
   if (!recipientEmail) {
     flashExportButton("CSV downloaded", 1800);
@@ -479,7 +498,8 @@ async function exportHistory() {
       csvContent,
       filename,
       recipientEmail,
-      recordCount: 1
+      recordCount: 1,
+      observationId: record.id
     });
 
     flashExportButton("Check Google window", 2200);
@@ -490,6 +510,7 @@ async function exportHistory() {
       "If Google cannot open the page, try a private browser window signed in only to your Buckley Park College Google account.",
       ""
     );
+    await new Promise((resolve) => window.setTimeout(resolve, 2200));
   } catch (error) {
     flashExportButton("CSV downloaded", 2200);
     setExportStatus(
@@ -677,12 +698,13 @@ function isEmailDeliveryConfigured() {
   return Boolean(GOOGLE_APPS_SCRIPT_CONFIG.webAppUrl);
 }
 
-async function sendCsvToGoogleWorkspace({ csvContent, filename, recipientEmail, recordCount }) {
+async function sendCsvToGoogleWorkspace({ csvContent, filename, recipientEmail, recordCount, observationId }) {
   const payload = {
     recipientEmail,
     filename,
     csvContent,
     recordCount: String(recordCount),
+    observationId,
     exportedAt: new Date().toISOString()
   };
 

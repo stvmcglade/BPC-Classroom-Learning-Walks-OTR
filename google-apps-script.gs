@@ -1,4 +1,4 @@
-const SCRIPT_VERSION = "2026-10-14-account-match";
+const SCRIPT_VERSION = "2026-10-14-duplicate-protection";
 const DRIVE_FOLDER_ID = "1YThYqaqnVbZbjAODNoH35mGtoLw6fFLG";
 const SENDER_NAME = "Classroom Learning Walks";
 const EMAIL_SUBJECT_PREFIX = "Classroom Learning Walks CSV Export";
@@ -14,9 +14,9 @@ function doGet() {
 }
 
 function doPost(e) {
+  let lock;
   try {
     const recipientEmail = String((e.parameter && e.parameter.recipientEmail) || "").trim().toLowerCase();
-    const originalFilename = String((e.parameter && e.parameter.filename) || "classroom-learning-walks-indicators.csv").trim();
     const csvContent = String((e.parameter && e.parameter.csvContent) || "");
     const recordCount = String((e.parameter && e.parameter.recordCount) || "0").trim();
 
@@ -30,11 +30,43 @@ function doPost(e) {
 
     assertObserverAccount_(recipientEmail);
 
-    const finalFilename = getTimestampedFilename_(originalFilename);
-    const csvBlob = Utilities.newBlob(csvContent, "text/csv", finalFilename);
-    const driveFile = saveCsvToDrive_(csvBlob.copyBlob());
+    const observationId = String(e.parameter.observationId || "").trim().toLowerCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(observationId)) {
+      throw new Error("This observation page needs updating before uploading. Keep your downloaded CSV and use the latest webpage files. No file was saved or emailed.");
+    }
 
-    MailApp.sendEmail({
+    lock = LockService.getUserLock();
+    if (!lock.tryLock(10000)) {
+      throw new Error("Another export is still processing. Wait for its Google window to finish before retrying.");
+    }
+    const exportKey = hashText_(recipientEmail + "\n" + observationId);
+    const folder = DRIVE_FOLDER_ID ? DriveApp.getFolderById(DRIVE_FOLDER_ID) : DriveApp.getRootFolder();
+    const finalFilename = "classroom-learning-walks-" + exportKey + ".csv";
+    const properties = PropertiesService.getUserProperties();
+    const recent = JSON.parse(properties.getProperty("recentWalkExports") || "[]");
+    const previous = recent.find((entry) => entry.key === exportKey);
+    const matches = previous ? null : folder.getFilesByName(finalFilename);
+    const existingFile = previous ? DriveApp.getFileById(previous.id) : matches.hasNext() ? matches.next() : null;
+
+    if (existingFile) {
+      if (existingFile.getBlob().getDataAsString("UTF-8") !== csvContent) {
+        return buildHtmlResponse_({ ok: false, driveUrl: existingFile.getUrl(), error: "This observation was already uploaded with different contents. Your changes have not overwritten the original, and no extra file or email was created. Keep your updated downloaded CSV and contact the report administrator to replace the original if needed." });
+      }
+      const emailed = existingFile.getDescription() === "Learning Walk export: email sent";
+      return buildHtmlResponse_({ ok: true, emailUnconfirmed: !emailed, recipientEmail, recordCount, finalFilename, driveUrl: existingFile.getUrl(),
+        summary: emailed ? "This observation was already saved and emailed. No duplicate file or email was created." : "This observation is already saved in Drive. Email delivery is unconfirmed; no duplicate file or email was created. Use the Drive copy below." });
+    }
+
+    const csvBlob = Utilities.newBlob(csvContent, "text/csv", finalFilename);
+    const driveFile = folder.createFile(csvBlob.copyBlob());
+    // Remember the file before email delivery; retries must never create a second copy.
+    recent.unshift({ key: exportKey, id: driveFile.getId() });
+    properties.setProperty("recentWalkExports", JSON.stringify(recent.slice(0, 40)));
+    driveFile.setDescription("Learning Walk export: email delivery unconfirmed");
+
+    let emailSent = false;
+    try {
+      MailApp.sendEmail({
       to: recipientEmail,
       subject: EMAIL_SUBJECT_PREFIX,
       body:
@@ -44,21 +76,35 @@ function doPost(e) {
         "Drive copy: " + driveFile.getUrl(),
       attachments: [csvBlob],
       name: SENDER_NAME
-    });
+      });
+      emailSent = true;
+      driveFile.setDescription("Learning Walk export: email sent");
+    } catch (emailError) {
+      // A send can succeed before an error is returned. Do not automatically resend.
+    }
 
     return buildHtmlResponse_({
       ok: true,
+      emailUnconfirmed: !emailSent,
       recipientEmail,
       recordCount,
       finalFilename,
-      driveUrl: driveFile.getUrl()
+      driveUrl: driveFile.getUrl(),
+      summary: emailSent ? "The CSV was emailed and saved to Google Drive successfully." : "The CSV was saved to Google Drive, but email delivery is unconfirmed. Use the Drive copy below; exporting again will not create or email another copy."
     });
   } catch (error) {
     return buildHtmlResponse_({
       ok: false,
       error: error && error.message ? error.message : String(error)
     });
+  } finally {
+    if (lock && lock.hasLock()) lock.releaseLock();
   }
+}
+
+function hashText_(value) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value, Utilities.Charset.UTF_8)
+    .map((byte) => (byte & 255).toString(16).padStart(2, "0")).join("");
 }
 
 function assertObserverAccount_(observerEmail) {
@@ -80,40 +126,12 @@ function assertObserverAccount_(observerEmail) {
   }
 }
 
-function saveCsvToDrive_(csvBlob) {
-  const folderId = String(DRIVE_FOLDER_ID || "").trim();
-
-  if (folderId) {
-    return DriveApp.getFolderById(folderId).createFile(csvBlob);
-  }
-
-  return DriveApp.createFile(csvBlob);
-}
-
-function getTimestampedFilename_(filename) {
-  const safeName = String(filename || "classroom-learning-walks-indicators.csv").trim();
-  const timestamp = Utilities.formatDate(
-    new Date(),
-    Session.getScriptTimeZone(),
-    "yyyy-MM-dd_HH-mm-ss"
-  );
-  const lastDotIndex = safeName.lastIndexOf(".");
-
-  if (lastDotIndex > 0) {
-    const baseName = safeName.slice(0, lastDotIndex);
-    const extension = safeName.slice(lastDotIndex);
-    return baseName + "-" + timestamp + extension;
-  }
-
-  return safeName + "-" + timestamp;
-}
-
 function buildHtmlResponse_(payload) {
-  const title = payload.ok ? "CSV Export Complete" : "CSV Export Failed";
+  const title = payload.ok ? payload.emailUnconfirmed ? "CSV Saved to Drive" : "CSV Export Complete" : "CSV Export Failed";
   const accentColor = payload.ok ? "#0f766e" : "#b42318";
-  const summary = payload.ok
+  const summary = payload.summary || (payload.ok
     ? "The CSV was emailed and saved to Google Drive successfully."
-    : "Google Apps Script could not complete the export.";
+    : "Google Apps Script could not complete the export.");
 
   const details = payload.ok
     ? [
@@ -125,6 +143,7 @@ function buildHtmlResponse_(payload) {
       ].join("")
     : [
         `<p><strong>Issue:</strong> ${escapeHtml_(payload.error || "Unknown error.")}</p>`,
+        payload.driveUrl ? `<p><a class="button" href="${escapeHtml_(payload.driveUrl)}" target="_blank" rel="noopener noreferrer">Open the existing Drive copy</a></p>` : "",
         "<p class=\"hint\">Please keep this window open and share the message above if you need help troubleshooting.</p>"
       ].join("");
 
@@ -149,7 +168,7 @@ function buildHtmlResponse_(payload) {
     "</head>",
     "<body>",
     "<div class=\"card\">",
-    `<p class="eyebrow">${payload.ok ? "Export Successful" : "Export Failed"}</p>`,
+    `<p class="eyebrow">${payload.ok ? payload.emailUnconfirmed ? "Email Unconfirmed" : "Export Successful" : "Export Failed"}</p>`,
     `<h1>${escapeHtml_(title)}</h1>`,
     `<p class="summary">${escapeHtml_(summary)}</p>`,
     details,
