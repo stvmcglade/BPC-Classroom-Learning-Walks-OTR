@@ -1,5 +1,5 @@
-const SCRIPT_VERSION = "2026-06-08-friendly";
-const DRIVE_FOLDER_ID = "";
+const SCRIPT_VERSION = "2026-10-14-account-match";
+const DRIVE_FOLDER_ID = "1YThYqaqnVbZbjAODNoH35mGtoLw6fFLG";
 const SENDER_NAME = "Classroom Learning Walks";
 const EMAIL_SUBJECT_PREFIX = "Classroom Learning Walks CSV Export";
 
@@ -15,7 +15,7 @@ function doGet() {
 
 function doPost(e) {
   try {
-    const recipientEmail = String((e.parameter && e.parameter.recipientEmail) || "").trim();
+    const recipientEmail = String((e.parameter && e.parameter.recipientEmail) || "").trim().toLowerCase();
     const originalFilename = String((e.parameter && e.parameter.filename) || "classroom-learning-walks-indicators.csv").trim();
     const csvContent = String((e.parameter && e.parameter.csvContent) || "");
     const recordCount = String((e.parameter && e.parameter.recordCount) || "0").trim();
@@ -27,6 +27,8 @@ function doPost(e) {
     if (!csvContent) {
       throw new Error("Missing CSV content.");
     }
+
+    assertObserverAccount_(recipientEmail);
 
     const finalFilename = getTimestampedFilename_(originalFilename);
     const csvBlob = Utilities.newBlob(csvContent, "text/csv", finalFilename);
@@ -56,6 +58,25 @@ function doPost(e) {
       ok: false,
       error: error && error.message ? error.message : String(error)
     });
+  }
+}
+
+function assertObserverAccount_(observerEmail) {
+  if (!/^[^\s@]+@buckleyparkco\.vic\.edu\.au$/.test(observerEmail)) {
+    throw new Error("Use your own @buckleyparkco.vic.edu.au email address. No file was saved or emailed.");
+  }
+
+  // Trust Google's authenticated identity, never an account hint from the form.
+  const activeEmail = String(Session.getActiveUser().getEmail() || "").trim().toLowerCase();
+  const effectiveEmail = String(Session.getEffectiveUser().getEmail() || "").trim().toLowerCase();
+  if (!activeEmail || !effectiveEmail) {
+    throw new Error("Google could not verify your signed-in email. No file was saved or emailed. Return to the observation form and retry in a browser signed in only as " + observerEmail + ".");
+  }
+  if (activeEmail !== observerEmail) {
+    throw new Error("The signed-in Google account does not match " + observerEmail + ". No file was saved or emailed. Switch to that school account, return to the observation form and export again. If Google keeps choosing another account, use a separate browser profile signed in only to your school account.");
+  }
+  if (effectiveEmail !== activeEmail) {
+    throw new Error("The upload is not running as the signed-in observer. No file was saved or emailed. Ask the administrator to deploy this web app to execute as the user accessing it.");
   }
 }
 

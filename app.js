@@ -428,7 +428,7 @@ async function exportHistory() {
 
   const detailRows = buildIndicatorExportRows(record);
   const csvContent = buildCsv(detailRows.length ? detailRows : [buildWalkthroughSummaryRow(record)]);
-  const recipientEmail = exportEmailInput.value.trim();
+  const recipientEmail = exportEmailInput.value.trim().toLowerCase();
   const filename = "classroom-learning-walks-indicators.csv";
 
   downloadFile(
@@ -450,6 +450,12 @@ async function exportHistory() {
   if (!isValidEmail(recipientEmail)) {
     flashExportButton("CSV downloaded", 1800);
     setExportStatus("CSV downloaded, but the email address looks invalid. Please check it and try again.", "error");
+    return;
+  }
+
+  if (!recipientEmail.endsWith("@buckleyparkco.vic.edu.au")) {
+    flashExportButton("CSV downloaded", 1800);
+    setExportStatus("CSV downloaded, but Google delivery requires your own @buckleyparkco.vic.edu.au email address. Your observation is still on the form.", "error");
     return;
   }
 
@@ -479,6 +485,7 @@ async function exportHistory() {
     flashExportButton("Check Google window", 2200);
     setExportStatus(
       `CSV downloaded. Google delivery is unconfirmed here: check the Google window for the success message for ${recipientEmail}. ` +
+      `Use ${recipientEmail} in the Google window; the signed-in account must match. ` +
       "Your observation remains on this form. After confirming delivery, use Reset form to start the next observation. " +
       "If Google cannot open the page, try a private browser window signed in only to your Buckley Park College Google account.",
       ""
@@ -700,7 +707,10 @@ function submitGoogleWorkspaceForm(payload) {
     document.body.appendChild(formElement);
   }
 
-  formElement.action = GOOGLE_APPS_SCRIPT_CONFIG.webAppUrl;
+  // Account routing is only a hint; Apps Script must verify the actual user.
+  const uploadUrl = new URL(GOOGLE_APPS_SCRIPT_CONFIG.webAppUrl);
+  uploadUrl.searchParams.set("authuser", payload.recipientEmail.trim().toLowerCase());
+  formElement.action = uploadUrl.href;
   formElement.target = popupName;
   formElement.innerHTML = "";
 
